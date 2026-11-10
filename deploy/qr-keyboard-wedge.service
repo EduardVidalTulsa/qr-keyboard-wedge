@@ -1,0 +1,16 @@
+# Example systemd unit. Adjust paths and options.
+#
+# Creating a uinput device needs root (or a group with access to /dev/uinput -- see the README
+# for why that's a bigger grant than it looks).
+[Unit]
+Description=Webcam QR/barcode keyboard wedge
+After=graphical.target
+
+[Service]
+ExecStart=/opt/qr-keyboard-wedge/venv/bin/python qr_keyboard_wedge.py --video /dev/video0 --symbology qrcode
+WorkingDirectory=/opt/qr-keyboard-wedge
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
