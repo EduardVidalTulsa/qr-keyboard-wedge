@@ -20,7 +20,7 @@
 #
 # usage: qr_keyboard_wedge.py [--video /dev/video0] [--symbology qrcode] [--terminator enter]
 #                              [--prefix STR] [--suffix STR] [--debounce 2.0]
-import argparse, logging, subprocess, sys, time
+import argparse, glob, logging, subprocess, sys, time
 from evdev import UInput, ecodes as e
 
 log = logging.getLogger("qr-keyboard-wedge")
@@ -56,7 +56,25 @@ def make_uinput(name):
     return UInput({e.EV_KEY: keys}, name=name)
 
 
+def caps_lock_on():
+    """True if Caps Lock is on, read from the keyboard LEDs the session keeps in sync.
+
+    A real scanner sends Shift only for uppercase letters, so with Caps Lock on the host
+    inverts the case of every letter; QR payloads such as tokens are case sensitive."""
+    for path in glob.glob("/sys/class/leds/*::capslock/brightness"):
+        try:
+            with open(path) as f:
+                if int(f.read().strip() or 0) > 0:
+                    return True
+        except (OSError, ValueError):
+            pass
+    return False
+
+
 def type_text(ui, text, key_delay, warned=set()):
+    caps = caps_lock_on()
+    if caps:
+        log.info("Caps Lock is on: inverting Shift for letters")
     for ch in text:
         mapped = CHARMAP.get(ch)
         if mapped is None:
@@ -65,6 +83,8 @@ def type_text(ui, text, key_delay, warned=set()):
                 warned.add(ch)
             continue
         code, shift = mapped
+        if caps and ch.isascii() and ch.isalpha():
+            shift = not shift
         if shift:
             ui.write(e.EV_KEY, e.KEY_LEFTSHIFT, 1)
         ui.write(e.EV_KEY, code, 1)

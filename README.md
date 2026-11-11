@@ -60,3 +60,11 @@ out wrong, your session is using a different layout, and you'll need to either s
 ## License
 
 GPL-3.0-or-later, see `LICENSE`.
+
+## Caps Lock
+
+A hardware scanner sends Shift only for uppercase characters, so with Caps Lock on the host
+inverts the case of every letter, which breaks case-sensitive payloads such as URL tokens.
+Before typing each code the wedge reads the Caps Lock LED state from
+`/sys/class/leds/*::capslock/brightness` and, when it is on, inverts Shift for letters so the
+text arrives exactly as encoded.
