@@ -20,7 +20,7 @@
 #
 # usage: qr_keyboard_wedge.py [--video /dev/video0] [--symbology qrcode] [--terminator enter]
 #                              [--prefix STR] [--suffix STR] [--debounce 2.0]
-import argparse, glob, logging, subprocess, sys, time
+import argparse, glob, logging, subprocess, sys, threading, time
 from evdev import UInput, ecodes as e
 
 log = logging.getLogger("qr-keyboard-wedge")
@@ -113,7 +113,30 @@ def run_zbarcam(video, symbology, quiet):
         cmd.append("-q")
     cmd.append(video)
     log.info("starting: %s", " ".join(cmd))
-    return subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, bufsize=1)
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+
+
+# With MJPEG sources a badly corrupt frame can leave zbar's JPEG decoder stuck: from then on every
+# frame fails with "Improper call to JPEG library in state N" and nothing is ever decoded, while
+# zbarcam keeps running. Watch its stderr and kill it when that happens, so main() restarts it.
+STUCK_MARK = "Improper call to JPEG library"
+STUCK_COUNT, STUCK_WINDOW = 30, 5.0
+
+
+def watch_stderr(proc):
+    hits = []
+    for line in proc.stderr:
+        if STUCK_MARK in line:
+            now = time.monotonic()
+            hits = [t for t in hits if now - t < STUCK_WINDOW] + [now]
+            if len(hits) == 1:
+                sys.stderr.write(line)
+            if len(hits) >= STUCK_COUNT:
+                log.warning("zbarcam's JPEG decoder is stuck, killing it")
+                proc.kill()
+                return
+        else:
+            sys.stderr.write(line)
 
 
 def main():
@@ -141,6 +164,7 @@ def main():
     last_code, last_time = None, 0.0
     while True:
         proc = run_zbarcam(args.video, args.symbology, args.quiet)
+        threading.Thread(target=watch_stderr, args=(proc,), daemon=True).start()
         for line in proc.stdout:
             code = line.rstrip("\n")
             if not code:
